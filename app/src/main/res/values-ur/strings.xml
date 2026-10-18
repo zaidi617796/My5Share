@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">موبائل سیٹنگز گائیڈ</string>
+    <string name="tagline">جاز • زونگ • ٹیلی نار • یوفون — انٹرنیٹ سیٹنگز اور کارآمد کوڈز</string>
+    <string name="disclaimer">کسی بھی کمپنی سے وابستہ نہیں۔ کوڈز کبھی بدل جاتے ہیں — غلط کوڈ بتائیں، ٹھیک کر دیں گے۔</string>
+
+    <string name="internet_settings">انٹرنیٹ سیٹنگز (APN)</string>
+    <string name="step1">سیٹنگز کھولو → موبائل نیٹ ورک / سم</string>
+    <string name="step2">"ایکسس پوائنٹ نیمز" (APN) پر ٹیپ کرو</string>
+    <string name="step3">نئی APN بنانے کے لیے + دباؤ</string>
+    <string name="step4">نیچے دی گئی ویلیوز کاپی کر کے پیسٹ کرو</string>
+    <string name="step5">سیو کرو، پھر اپنی نئی APN سلیکٹ کرو</string>
+
+    <string name="copy">کاپی</string>
+    <string name="copied">کاپی ہو گیا ✓</string>
+    <string name="open_apn_settings">APN سیٹنگز کھولو</string>
+    <string name="no_apn_screen">اس فون پر APN اسکرین نہیں کھل سکی</string>
+    <string name="send_sms_settings">SMS سے سیٹنگز منگواؤ (%1$s بھیجو %2$s پر)</string>
+    <string name="no_sms_app">SMS ایپ نہیں ملی</string>
+
+    <string name="codes_title">کارآمد کوڈز (ڈائل کرنے کے لیے ٹیپ کرو)</string>
+    <string name="balance">بیلنس چیک</string>
+    <string name="remaining_mbs">باقی MBs</string>
+    <string name="helpline">ہیلپ لائن</string>
+    <string name="dial">ڈائل</string>
+    <string name="no_dialer">ڈائلر نہیں کھل سکا</string>
+
+    <string name="last_updated">کوڈز کی تصدیق: اکتوبر 2026</string>
+</resources>

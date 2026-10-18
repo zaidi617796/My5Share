@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mobile Settings Guide</string>
+    <string name="tagline">Jazz • Zong • Telenor • Ufone — Internet settings &amp; useful codes</string>
+    <string name="disclaimer">Not affiliated with Jazz, Zong, Telenor or Ufone. Codes change sometimes — report a wrong code and we\'ll fix it.</string>
+
+    <string name="internet_settings">Internet Settings (APN)</string>
+    <string name="step1">Open Settings → Mobile Network / SIM</string>
+    <string name="step2">Tap "Access Point Names" (APN)</string>
+    <string name="step3">Tap + to add a new APN</string>
+    <string name="step4">Copy the values below and paste them in</string>
+    <string name="step5">Save, then select your new APN</string>
+
+    <string name="copy">Copy</string>
+    <string name="copied">Copied ✓</string>
+    <string name="open_apn_settings">Open APN Settings</string>
+    <string name="no_apn_screen">Could not open APN screen on this phone</string>
+    <string name="send_sms_settings">Get settings via SMS (%1$s to %2$s)</string>
+    <string name="no_sms_app">No SMS app found</string>
+
+    <string name="codes_title">Useful Codes (tap to dial)</string>
+    <string name="balance">Balance check</string>
+    <string name="remaining_mbs">Remaining MBs</string>
+    <string name="helpline">Helpline</string>
+    <string name="dial">Dial</string>
+    <string name="no_dialer">Could not open dialer</string>
+
+    <string name="last_updated">Codes verified: October 2026</string>
+</resources>
