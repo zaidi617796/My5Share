@@ -29,3 +29,11 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
 }
+
+// Fix: kotlin-stdlib ke purane jdk7/jdk8 tukre (1.6.21) naye stdlib (1.8.22)
+// se takrate hain — duplicate class error. Purane wale nikalo; unka content
+// naye stdlib me pehle se maujood hai.
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
