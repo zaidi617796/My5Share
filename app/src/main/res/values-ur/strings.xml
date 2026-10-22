@@ -26,4 +26,8 @@
     <string name="no_dialer">ڈائلر نہیں کھل سکا</string>
 
     <string name="last_updated">کوڈز کی تصدیق: اکتوبر 2026</string>
+
+    <string name="codes_button">🔢 خفیہ کوڈز — انٹرنیٹ و نیٹ ورک</string>
+    <string name="codes_screen_title">خفیہ کوڈز</string>
+    <string name="codes_safety">کیسے استعمال کریں: کوڈ ڈائلر میں لکھو — کال دبانے کی ضرورت نہیں، خفیہ اسکرین خود کھل جاتی ہے۔ کچھ کوڈز نئے ماڈلز پر بند ہو سکتے ہیں۔ جن مینوز پر احتیاط لکھی ہے، وہاں کوئی سیٹنگ تبدیل نہ کرو اگر سمجھ نہ ہو — نیٹ ورک بند ہو سکتا ہے۔</string>
 </resources>
