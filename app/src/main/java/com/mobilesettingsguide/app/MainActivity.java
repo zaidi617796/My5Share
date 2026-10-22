@@ -86,6 +86,25 @@ public class MainActivity extends AppCompatActivity {
             grid.addView(b, glp);
         }
 
+        // Khufia codes wala section (v2)
+        Button codesBtn = new Button(this);
+        codesBtn.setText(getString(R.string.codes_button));
+        codesBtn.setTextSize(17);
+        codesBtn.setTextColor(Color.WHITE);
+        codesBtn.setAllCaps(false);
+        GradientDrawable cbg = new GradientDrawable();
+        cbg.setColor(Color.parseColor("#0F172A"));
+        cbg.setCornerRadius(dp(16));
+        codesBtn.setBackground(cbg);
+        codesBtn.setPadding(dp(8), dp(20), dp(8), dp(20));
+        LinearLayout.LayoutParams clpBtn = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clpBtn.topMargin = dp(16);
+        codesBtn.setLayoutParams(clpBtn);
+        codesBtn.setOnClickListener(v ->
+                startActivity(new Intent(this, CodesActivity.class)));
+        root.addView(codesBtn);
+
         TextView foot = new TextView(this);
         foot.setText(getString(R.string.disclaimer));
         foot.setTextSize(11);
