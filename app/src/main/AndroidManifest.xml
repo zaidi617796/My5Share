@@ -22,5 +22,10 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".CodesActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
     </application>
 </manifest>
