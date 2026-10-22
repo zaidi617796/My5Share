@@ -26,4 +26,8 @@
     <string name="no_dialer">Could not open dialer</string>
 
     <string name="last_updated">Codes verified: October 2026</string>
+
+    <string name="codes_button">🔢 Secret Codes — Internet &amp; Network</string>
+    <string name="codes_screen_title">Secret Codes</string>
+    <string name="codes_safety">Kaise use karein: code dialer me likho — call dabane ki zaroorat nahi, khufia screen khud khul jati hai. Kuch codes naye models par band ho sakte hain. Jin menus par ⚠️ ehtiyaat likhi hai, wahan koi setting tabdeel na karo agar samajh na ho — network band ho sakta hai.</string>
 </resources>
