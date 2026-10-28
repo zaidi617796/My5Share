@@ -18,6 +18,8 @@ public class MfsStore {
     public String operator = "Jazz";
     public double totalGb = 100;
     public int totalMins = 0;
+    public int totalOnnetMins = 0;
+    public int totalOffnetMins = 0;
     public int totalSms = 0;
     public int members = 5;
     public long cycleStartMs;
@@ -38,6 +40,10 @@ public class MfsStore {
         operator = sp.getString("operator", "Jazz");
         totalGb = sp.getFloat("total_gb", 100f);
         totalMins = sp.getInt("total_mins", 0);
+        totalOnnetMins = sp.getInt("total_onnet_mins", 0);
+        totalOffnetMins = sp.getInt("total_offnet_mins", 0);
+        // Purani (v2) settings: split na ho to kul minutes on-net samjho
+        if (totalOnnetMins == 0 && totalOffnetMins == 0 && totalMins > 0) totalOnnetMins = totalMins;
         totalSms = sp.getInt("total_sms", 0);
         members = sp.getInt("members", 5);
         cycleStartMs = sp.getLong("cycle_start", System.currentTimeMillis());
@@ -61,6 +67,8 @@ public class MfsStore {
                 .putString("operator", operator)
                 .putFloat("total_gb", (float) totalGb)
                 .putInt("total_mins", totalMins)
+                .putInt("total_onnet_mins", totalOnnetMins)
+                .putInt("total_offnet_mins", totalOffnetMins)
                 .putInt("total_sms", totalSms)
                 .putInt("members", members)
                 .putLong("cycle_start", cycleStartMs)
@@ -92,6 +100,16 @@ public class MfsStore {
     /** Mera barabar hissa (minutes) */
     public double fairShareMins() {
         return members > 0 ? (double) totalMins / members : totalMins;
+    }
+
+    /** Mera barabar hissa (on-net minutes) */
+    public double fairShareOnnet() {
+        return members > 0 ? (double) totalOnnetMins / members : totalOnnetMins;
+    }
+
+    /** Mera barabar hissa (off-net minutes) */
+    public double fairShareOffnet() {
+        return members > 0 ? (double) totalOffnetMins / members : totalOffnetMins;
     }
 
     /** Mera barabar hissa (SMS) */

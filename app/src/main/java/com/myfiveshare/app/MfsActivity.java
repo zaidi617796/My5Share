@@ -341,8 +341,14 @@ public class MfsActivity extends AppCompatActivity {
         return UsageReader.mobileUsageBytes(this, store.cycleStartMs, System.currentTimeMillis());
     }
 
+    /** Mere minutes ka on-net/off-net split (ijazat na ho to {-1,-1}) */
+    private int[] myMinsSplit() {
+        return UsageReader.callMinutesSplit(this, store.cycleStartMs, store.operator);
+    }
+
     private int myMins() {
-        return UsageReader.callMinutesUsed(this, store.cycleStartMs);
+        int[] sp = myMinsSplit();
+        return sp[0] < 0 ? -1 : sp[0] + sp[1];
     }
 
     private int mySms() {
@@ -374,7 +380,8 @@ public class MfsActivity extends AppCompatActivity {
         final EditText etName = input(L("your_name"), false, false);
         final Spinner spOp = operatorSpinner();
         final EditText etGb = input(L("total_gb_hint"), true, true);
-        final EditText etMins = input(L("total_mins_hint"), true, false);
+        final EditText etOnnet = input(L("total_onnet_hint"), true, false);
+        final EditText etOffnet = input(L("total_offnet_hint"), true, false);
         final EditText etSms = input(L("total_sms_hint"), true, false);
         final EditText etMembers = input(L("members_hint"), true, false);
         final EditText etDays = input(L("days_hint"), true, false);
@@ -383,7 +390,7 @@ public class MfsActivity extends AppCompatActivity {
         Button btnDate = button(L("pick_date"), false);
         btnDate.setOnClickListener(x -> pickDate(tvDate));
         final Button btnCreate = button(L("create_btn"), true);
-        oc.addView(etName); oc.addView(spOp); oc.addView(etGb); oc.addView(etMins); oc.addView(etSms);
+        oc.addView(etName); oc.addView(spOp); oc.addView(etGb); oc.addView(etOnnet); oc.addView(etOffnet); oc.addView(etSms);
         oc.addView(etMembers); oc.addView(etDays);
         oc.addView(spaced(tvDate, 10));
         oc.addView(btnDate); oc.addView(btnCreate);
@@ -402,7 +409,9 @@ public class MfsActivity extends AppCompatActivity {
             store.myName = name;
             store.operator = String.valueOf(spOp.getSelectedItem());
             store.totalGb = gb;
-            store.totalMins = parseIntOr0(etMins.getText().toString());
+            store.totalOnnetMins = parseIntOr0(etOnnet.getText().toString());
+            store.totalOffnetMins = parseIntOr0(etOffnet.getText().toString());
+            store.totalMins = store.totalOnnetMins + store.totalOffnetMins;
             store.totalSms = parseIntOr0(etSms.getText().toString());
             store.members = mem;
             store.validityDays = days;
@@ -411,7 +420,9 @@ public class MfsActivity extends AppCompatActivity {
             btnCreate.setEnabled(false);
             btnCreate.setText(L("creating"));
             long db = myDataBytes();
-            MfsSync.createGroup(store, Math.max(0, db), Math.max(0, myMins()), Math.max(0, mySms()),
+            int[] sp0 = myMinsSplit();
+            MfsSync.createGroup(store, Math.max(0, db), Math.max(0, myMins()),
+                    Math.max(0, sp0[0]), Math.max(0, sp0[1]), Math.max(0, mySms()),
                     new MfsSync.Cb<Boolean>() {
                         @Override public void ok(Boolean v) {
                             store.setupDone = true;
@@ -457,14 +468,18 @@ public class MfsActivity extends AppCompatActivity {
                     store.myName = name;
                     store.operator = gi.operator;
                     store.totalGb = gi.totalGb;
-                    store.totalMins = gi.totalMins;
+                    store.totalOnnetMins = gi.totalOnnetMins;
+                    store.totalOffnetMins = gi.totalOffnetMins;
+                    store.totalMins = gi.totalOnnetMins + gi.totalOffnetMins;
                     store.totalSms = gi.totalSms;
                     store.members = gi.membersCount;
                     store.validityDays = gi.validityDays;
                     store.cycleStartMs = gi.cycleStartMs;
                     store.joinCode = gi.code;
                     long db = myDataBytes();
-                    MfsSync.upsertMember(store, Math.max(0, db), Math.max(0, myMins()), Math.max(0, mySms()),
+                    int[] spj = myMinsSplit();
+                    MfsSync.upsertMember(store, Math.max(0, db), Math.max(0, myMins()),
+                            Math.max(0, spj[0]), Math.max(0, spj[1]), Math.max(0, mySms()),
                             new MfsSync.Cb<Boolean>() {
                                 @Override public void ok(Boolean v) {
                                     store.setupDone = true;
@@ -520,7 +535,8 @@ public class MfsActivity extends AppCompatActivity {
         accessCardIfNeeded(content);
 
         final long dataBytes = myDataBytes();
-        final int mins = myMins();
+        final int[] minsSplit = myMinsSplit();
+        final int mins = minsSplit[0] < 0 ? -1 : minsSplit[0] + minsSplit[1];
         final int sms = mySms();
         final double fairGb = store.fairShareGb();
 
@@ -530,9 +546,12 @@ public class MfsActivity extends AppCompatActivity {
                 15, VIOLET, true));
         gc.addView(spaced(text(L("join_code_label") + store.joinCode, 20, TEXT, true), 8));
         gc.addView(text(F("pkg_line", store.totalGb, store.members, fairGb), 13, MUTED, false));
-        if (store.totalMins > 0 || store.totalSms > 0) {
-            gc.addView(text(L("mins_u") + ": " + store.totalMins + " • " + L("sms_u") + ": " + store.totalSms,
-                    13, MUTED, false));
+        if (store.totalOnnetMins > 0 || store.totalOffnetMins > 0) {
+            gc.addView(text(L("onnet_u") + ": " + store.totalOnnetMins
+                    + " • " + L("offnet_u") + ": " + store.totalOffnetMins, 13, MUTED, false));
+        }
+        if (store.totalSms > 0) {
+            gc.addView(text(L("sms_u") + ": " + store.totalSms, 13, MUTED, false));
         }
         gc.addView(progressBar(store.cycleProgress(), VIOLET));
         int left = store.daysLeft();
@@ -550,15 +569,23 @@ public class MfsActivity extends AppCompatActivity {
                 dataBytes < 0 ? null : UsageReader.humanGb(dataBytes),
                 dataBytes < 0 ? -1 : UsageReader.toGb(dataBytes), fairGb, true, dataBytes == 0));
 
-        // Minutes card (sirf tab jab package me minutes hon ya ijazat/usage maujood ho)
-        if (store.totalMins > 0 || mins >= 0) {
-            if (mins < 0) content.addView(permCard(L("mins_u"), L("perm_call"), REQ_CALL,
-                    android.Manifest.permission.READ_CALL_LOG));
-            else content.addView(usageCard(L("mins_u"), mins + " " + L("mins_u"),
-                    mins, store.fairShareMins(), false, false));
-        } else {
+        // Minutes cards — on-net aur off-net ALAG (Zahid, 2026-10-28)
+        if (mins < 0) {
             content.addView(permCard(L("mins_u"), L("perm_call"), REQ_CALL,
                     android.Manifest.permission.READ_CALL_LOG));
+        } else {
+            if (store.totalOnnetMins > 0 || minsSplit[0] > 0) {
+                content.addView(usageCard(L("onnet_u"), minsSplit[0] + " " + L("mins_u"),
+                        minsSplit[0], store.fairShareOnnet(), false, false));
+            }
+            if (store.totalOffnetMins > 0 || minsSplit[1] > 0) {
+                content.addView(usageCard(L("offnet_u"), minsSplit[1] + " " + L("mins_u"),
+                        minsSplit[1], store.fairShareOffnet(), false, false));
+            }
+            if (store.totalOnnetMins == 0 && store.totalOffnetMins == 0
+                    && minsSplit[0] == 0 && minsSplit[1] == 0) {
+                content.addView(usageCard(L("mins_u"), "0 " + L("mins_u"), 0, 0, false, false));
+            }
         }
 
         // SMS card
@@ -573,14 +600,15 @@ public class MfsActivity extends AppCompatActivity {
         }
 
         Button btnReport = button(L("report_btn"), true);
-        btnReport.setOnClickListener(x -> shareText(reportText(dataBytes, mins, sms)));
+        btnReport.setOnClickListener(x -> shareText(reportText(dataBytes, minsSplit, sms)));
         content.addView(btnReport);
         Button btnRefresh = button(L("refresh"), false);
         btnRefresh.setOnClickListener(x -> showDashboard());
         content.addView(btnRefresh);
 
         // Sync: pehle meri usage bhejo, phir poora group lao
-        MfsSync.upsertMember(store, Math.max(0, dataBytes), Math.max(0, mins), Math.max(0, sms),
+        MfsSync.upsertMember(store, Math.max(0, dataBytes), Math.max(0, mins),
+                Math.max(0, minsSplit[0]), Math.max(0, minsSplit[1]), Math.max(0, sms),
                 new MfsSync.Cb<Boolean>() {
                     @Override public void ok(Boolean v) { fetchGroup(gen, syncLine); }
                     @Override public void fail(String msg) { fetchGroup(gen, syncLine); }
@@ -659,41 +687,103 @@ public class MfsActivity extends AppCompatActivity {
 
     private void renderMembers(int gen) {
         content.removeAllViews();
-        LinearLayout mc = card();
-        mc.addView(text(F("members_title", store.members), 17, VIOLET, true));
+        content.addView(text(F("members_title", store.members), 17, VIOLET, true));
         List<MfsSync.MemberRow> rows = lastMembers;
         if (rows == null) {
-            mc.addView(spaced(text(L("syncing"), 13, MUTED, false), 8));
+            LinearLayout c = card();
+            c.addView(text(L("syncing"), 13, MUTED, false));
+            content.addView(c);
         } else {
-            double fairGb = store.fairShareGb();
-            for (MfsSync.MemberRow r : rows) {
-                boolean me = r.deviceId.equals(store.deviceId);
-                mc.addView(spaced(text("• " + r.name + (me ? L("you_suffix") : ""), 15, TEXT, true), 10));
-                double gb = UsageReader.toGb(r.usedBytes);
-                String line2 = UsageReader.humanGb(r.usedBytes)
-                        + " • " + r.usedMins + " " + L("mins_u")
-                        + " • " + r.usedSms + " " + L("sms_u");
-                if (fairGb > 0 && gb >= 0) {
-                    double pct = gb / fairGb;
-                    line2 += " • " + String.format(Locale.US, "%.0f%%", pct * 100);
-                }
-                mc.addView(text(line2, 13, MUTED, false));
-                if (fairGb > 0 && gb >= 0) {
-                    double pct = gb / fairGb;
-                    mc.addView(progressBar(pct, pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN)));
-                }
-                mc.addView(text(F("last_sync", agoText(r.updatedAtMs)), 11, MUTED, false));
-            }
+            for (MfsSync.MemberRow r : rows) content.addView(memberCard(r));
             for (int i = rows.size() + 1; i <= store.members; i++) {
-                mc.addView(spaced(text("• " + L("tab_member") + " " + i + " — " + L("not_joined"),
-                        14, MUTED, false), 10));
-                mc.addView(text(L("member_data_note"), 11, MUTED, false));
+                LinearLayout c = card();
+                c.addView(text(L("tab_member") + " " + i + " — " + L("not_joined"), 15, MUTED, true));
+                c.addView(spaced(text(L("member_data_note"), 12, MUTED, false), 4));
+                content.addView(c);
             }
         }
-        content.addView(mc);
         Button btnRefresh = button(L("refresh"), false);
         btnRefresh.setOnClickListener(x -> showMembers());
         content.addView(btnRefresh);
+    }
+
+    /** SIMOSA-style member card: naam + data %, phir har cheez ki apni line/bar */
+    private LinearLayout memberCard(MfsSync.MemberRow r) {
+        LinearLayout c = card();
+        boolean me = r.deviceId.equals(store.deviceId);
+        double fairGb = store.fairShareGb();
+        double gb = UsageReader.toGb(r.usedBytes);
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(text(r.name + (me ? L("you_suffix") : ""), 16, TEXT, true),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (fairGb > 0 && gb >= 0) {
+            double pct = gb / fairGb;
+            int col = pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN);
+            head.addView(text(String.format(Locale.US, "%.0f%%", pct * 100), 18, col, true));
+        }
+        c.addView(head);
+
+        long shareBytes = (long) (fairGb * 1073741824.0);
+        statRow(c, L("data_u"), UsageReader.humanGb(r.usedBytes), gb, fairGb,
+                UsageReader.humanGb(Math.max(0, shareBytes - Math.max(0, r.usedBytes))),
+                String.format(Locale.US, "%.1f GB", fairGb));
+        statRow(c, L("onnet_u"), r.usedOnnetMins + " " + L("mins_u"),
+                r.usedOnnetMins, store.fairShareOnnet(),
+                Math.max(0, (int) Math.round(store.fairShareOnnet() - r.usedOnnetMins)) + " " + L("mins_u"),
+                String.format(Locale.US, "%.0f ", store.fairShareOnnet()) + L("mins_u"));
+        statRow(c, L("offnet_u"), r.usedOffnetMins + " " + L("mins_u"),
+                r.usedOffnetMins, store.fairShareOffnet(),
+                Math.max(0, (int) Math.round(store.fairShareOffnet() - r.usedOffnetMins)) + " " + L("mins_u"),
+                String.format(Locale.US, "%.0f ", store.fairShareOffnet()) + L("mins_u"));
+        statRow(c, L("sms_u"), r.usedSms + " " + L("sms_u"),
+                r.usedSms, store.fairShareSms(),
+                Math.max(0, (int) Math.round(store.fairShareSms() - r.usedSms)) + " " + L("sms_u"),
+                String.format(Locale.US, "%.0f ", store.fairShareSms()) + L("sms_u"));
+        c.addView(spaced(text(F("last_sync", agoText(r.updatedAtMs)), 11, MUTED, false), 8));
+        return c;
+    }
+
+    /** Ek istemal wali line: label, bara used + %, patli bar, "X left of Y" */
+    private void statRow(LinearLayout parent, String label, String usedText,
+                         double used, double fair, String leftText, String shareText) {
+        parent.addView(spaced(text(label, 12, MUTED, true), 10));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(text(usedText, 17, TEXT, true),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (fair > 0) {
+            double pct = used / fair;
+            int col = pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN);
+            row.addView(text(String.format(Locale.US, "%.0f%%", pct * 100), 13, col, true));
+        }
+        parent.addView(row);
+        if (fair > 0) {
+            double pct = used / fair;
+            int col = pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN);
+            parent.addView(progressBarSlim(pct, col));
+            parent.addView(text(leftText + " " + L("left_of") + " " + shareText, 11, MUTED, false));
+        }
+    }
+
+    private View progressBarSlim(double frac, int color) {
+        LinearLayout track = new LinearLayout(this);
+        track.setOrientation(LinearLayout.HORIZONTAL);
+        track.setBackground(roundRect(TRACK, 6, false));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
+        tlp.topMargin = dp(4);
+        track.setLayoutParams(tlp);
+        double f = Math.max(0, Math.min(1, frac));
+        View fill = new View(this);
+        fill.setBackground(roundRect(color, 6, false));
+        track.addView(fill, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, (float) f));
+        View rest = new View(this);
+        track.addView(rest, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, (float) (1 - f)));
+        return track;
     }
 
     private String agoText(long updatedAtMs) {
@@ -714,6 +804,8 @@ public class MfsActivity extends AppCompatActivity {
                 o.put("d", r.deviceId);
                 o.put("b", r.usedBytes);
                 o.put("m", r.usedMins);
+                o.put("on", r.usedOnnetMins);
+                o.put("of", r.usedOffnetMins);
                 o.put("s", r.usedSms);
                 o.put("u", r.updatedAtMs);
                 arr.put(o);
@@ -736,6 +828,11 @@ public class MfsActivity extends AppCompatActivity {
                 r.deviceId = o.getString("d");
                 r.usedBytes = o.getLong("b");
                 r.usedMins = o.optInt("m", 0);
+                r.usedOnnetMins = o.optInt("on", 0);
+                r.usedOffnetMins = o.optInt("of", 0);
+                if (r.usedOnnetMins == 0 && r.usedOffnetMins == 0 && r.usedMins > 0) {
+                    r.usedOnnetMins = r.usedMins;
+                }
                 r.usedSms = o.optInt("s", 0);
                 r.updatedAtMs = o.optLong("u", 0);
                 out.add(r);
@@ -838,7 +935,7 @@ public class MfsActivity extends AppCompatActivity {
 
     // ================= REPORT =================
 
-    private String reportText(long dataBytes, int mins, int sms) {
+    private String reportText(long dataBytes, int[] minsSplit, int sms) {
         StringBuilder sb = new StringBuilder();
         sb.append(L("r_title")).append("\n");
         sb.append(F("r_pkg", store.operator, store.totalGb, store.members)).append("\n");
@@ -852,8 +949,13 @@ public class MfsActivity extends AppCompatActivity {
         } else {
             sb.append(L("r_nodata")).append("\n");
         }
-        if (store.totalMins > 0 && mins >= 0) {
-            sb.append(F("r_mins", mins, store.fairShareMins())).append("\n");
+        if (minsSplit != null && minsSplit[0] >= 0) {
+            if (store.totalOnnetMins > 0) {
+                sb.append(F("r_onnet", minsSplit[0], store.fairShareOnnet())).append("\n");
+            }
+            if (store.totalOffnetMins > 0) {
+                sb.append(F("r_offnet", minsSplit[1], store.fairShareOffnet())).append("\n");
+            }
         }
         if (store.totalSms > 0 && sms >= 0) {
             sb.append(F("r_sms", sms, store.fairShareSms())).append("\n");

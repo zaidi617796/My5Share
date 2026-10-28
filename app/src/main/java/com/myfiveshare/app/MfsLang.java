@@ -127,6 +127,15 @@ public class MfsLang {
         p("mins_u", "Minutes", "منٹ");
         p("sms_u", "SMS", "پیغامات");
         p("total_mins_hint", "Total minutes — e.g. 1000 (empty = not counted)", "کل منٹ — مثلاً 1000 (خالی = گنتی نہیں)");
+        p("onnet_u", "On-Net Minutes", "آن نیٹ منٹ");
+        p("offnet_u", "Off-Net Minutes", "آف نیٹ منٹ");
+        p("total_onnet_hint", "Total on-net minutes (own network) — e.g. 80000 (empty = not counted)",
+                "کل آن نیٹ منٹ (اپنے نیٹ ورک پر) — مثلاً 80000 (خالی = گنتی نہیں)");
+        p("total_offnet_hint", "Total off-net minutes (other networks) — e.g. 8000 (empty = not counted)",
+                "کل آف نیٹ منٹ (دوسرے نیٹ ورکس پر) — مثلاً 8000 (خالی = گنتی نہیں)");
+        p("r_onnet", "On-net minutes: I used %d of %.0f share", "آن نیٹ منٹ: میں نے %2$.0f حصے میں سے %1$d استعمال کیے");
+        p("r_offnet", "Off-net minutes: I used %d of %.0f share", "آف نیٹ منٹ: میں نے %2$.0f حصے میں سے %1$d استعمال کیے");
+        p("left_of", "left of", "باقی از");
         p("total_sms_hint", "Total SMS — e.g. 1000 (empty = not counted)", "کل پیغامات — مثلاً 1000 (خالی = گنتی نہیں)");
         p("used_line", "Used: %s of %.1f", "استعمال: %s از %.1f");
         p("perm_call", "Allow call record access to count your minutes", "منٹ گننے کے لیے کال ریکارڈ کی اجازت دیں");

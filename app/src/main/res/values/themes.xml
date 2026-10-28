@@ -6,4 +6,13 @@
         <item name="colorAccent">#0288D1</item>
         <item name="android:windowBackground">@color/bg_main</item>
     </style>
+
+    <!-- MyFiveShare: apna gradient header pehle se hai, is liye system wala
+         upar ka title bar NAHI chahiye (naam do dafa aa raha tha — Zahid, 2026-10-28) -->
+    <style name="Theme.MyFiveShare" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#E4002B</item>
+        <item name="colorPrimaryDark">#191932</item>
+        <item name="colorAccent">#7B2FF7</item>
+        <item name="android:windowBackground">#F4F5FA</item>
+    </style>
 </resources>

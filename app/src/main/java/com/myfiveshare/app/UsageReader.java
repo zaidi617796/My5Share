@@ -92,6 +92,64 @@ public class UsageReader {
     }
 
     /**
+     * Kisi Pakistani mobile number ka operator, sirf prefix se.
+     * Jazz: 0300-0309 + Warid wale 0321-0324 (ab Jazz) | Zong: 0310-0319 |
+     * Ufone: 0330-0339 | Telenor: 0340-0349. Mobile na ho to null.
+     * Note: number portability (MNP) wale number par prefix ghalat bhi ho sakta hai —
+     * phone ke paas asal network jaanne ka koi tareeqa nahi hota.
+     */
+    public static String operatorOfNumber(String raw) {
+        if (raw == null) return null;
+        String n = raw.replaceAll("[^0-9+]", "");
+        if (n.startsWith("+92")) n = "0" + n.substring(3);
+        else if (n.startsWith("0092")) n = "0" + n.substring(4);
+        else if (n.startsWith("92") && n.length() == 12) n = "0" + n.substring(2);
+        if (!n.startsWith("03") || n.length() < 4) return null;
+        int code;
+        try { code = Integer.parseInt(n.substring(0, 4)); } catch (Exception e) { return null; }
+        if (code >= 300 && code <= 309) return "Jazz";
+        if (code >= 321 && code <= 324) return "Jazz";
+        if (code >= 310 && code <= 319) return "Zong";
+        if (code >= 330 && code <= 339) return "Ufone";
+        if (code >= 340 && code <= 349) return "Telenor";
+        return "Other";
+    }
+
+    /**
+     * Call minutes ka on-net / off-net split: jis number par call hui, us ke
+     * operator ko group ke operator se milao. Same network = on-net; doosra
+     * mobile network, landline ya unknown = off-net.
+     * Wapas: int[]{onNet, offNet}; ijazat na ho to {-1, -1}.
+     */
+    public static int[] callMinutesSplit(Context ctx, long startMs, String groupOperator) {
+        if (!hasPerm(ctx, android.Manifest.permission.READ_CALL_LOG)) return new int[]{-1, -1};
+        android.database.Cursor c = null;
+        try {
+            c = ctx.getContentResolver().query(
+                    android.provider.CallLog.Calls.CONTENT_URI,
+                    new String[]{android.provider.CallLog.Calls.DURATION,
+                            android.provider.CallLog.Calls.NUMBER},
+                    android.provider.CallLog.Calls.DATE + " > ?",
+                    new String[]{String.valueOf(startMs)}, null);
+            if (c == null) return new int[]{-1, -1};
+            long onSecs = 0, offSecs = 0;
+            int di = c.getColumnIndex(android.provider.CallLog.Calls.DURATION);
+            int ni = c.getColumnIndex(android.provider.CallLog.Calls.NUMBER);
+            while (c.moveToNext()) {
+                long d = Math.max(0, c.getLong(di));
+                String op = ni >= 0 ? operatorOfNumber(c.getString(ni)) : null;
+                if (op != null && groupOperator != null && op.equalsIgnoreCase(groupOperator)) onSecs += d;
+                else offSecs += d;
+            }
+            return new int[]{(int) Math.round(onSecs / 60.0), (int) Math.round(offSecs / 60.0)};
+        } catch (Exception e) {
+            return new int[]{-1, -1};
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
+    /**
      * startMs se ab tak bheje gaye SMS ki tadaad (content://sms/sent).
      * READ_SMS ki ijazat na ho ya error aaye to -1.
      */

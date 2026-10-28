@@ -40,21 +40,22 @@ public class MfsSync {
     public static class GroupInfo {
         public String code, operator;
         public double totalGb;
-        public int totalMins, totalSms, membersCount, validityDays;
+        public int totalMins, totalOnnetMins, totalOffnetMins, totalSms, membersCount, validityDays;
         public long cycleStartMs;
     }
 
     public static class MemberRow {
         public String name, deviceId;
         public long usedBytes;
-        public int usedMins, usedSms;
+        public int usedMins, usedOnnetMins, usedOffnetMins, usedSms;
         public long updatedAtMs;
     }
 
     // ---------- public operations ----------
 
     /** Owner: group server par banao, phir khud ko member joro */
-    public static void createGroup(MfsStore st, long usedBytes, int usedMins, int usedSms, Cb<Boolean> cb) {
+    public static void createGroup(MfsStore st, long usedBytes, int usedMins,
+                                   int usedOnnet, int usedOffnet, int usedSms, Cb<Boolean> cb) {
         EX.execute(() -> {
             try {
                 JSONObject g = new JSONObject();
@@ -62,12 +63,14 @@ public class MfsSync {
                 g.put("operator", st.operator);
                 g.put("total_gb", st.totalGb);
                 g.put("total_mins", st.totalMins);
+                g.put("total_onnet_mins", st.totalOnnetMins);
+                g.put("total_offnet_mins", st.totalOffnetMins);
                 g.put("total_sms", st.totalSms);
                 g.put("members_count", st.members);
                 g.put("cycle_start", iso(st.cycleStartMs));
                 g.put("validity_days", st.validityDays);
                 request("POST", "/rest/v1/mfs_groups", g.toString(), null);
-                upsertMemberSync(st, usedBytes, usedMins, usedSms);
+                upsertMemberSync(st, usedBytes, usedMins, usedOnnet, usedOffnet, usedSms);
                 post(() -> cb.ok(true));
             } catch (Exception e) {
                 post(() -> cb.fail(String.valueOf(e.getMessage())));
@@ -92,6 +95,12 @@ public class MfsSync {
                 gi.operator = g.getString("operator");
                 gi.totalGb = g.getDouble("total_gb");
                 gi.totalMins = g.optInt("total_mins", 0);
+                gi.totalOnnetMins = g.optInt("total_onnet_mins", 0);
+                gi.totalOffnetMins = g.optInt("total_offnet_mins", 0);
+                // Purana (v2) group: split khaali ho to kul minutes on-net samjho
+                if (gi.totalOnnetMins == 0 && gi.totalOffnetMins == 0 && gi.totalMins > 0) {
+                    gi.totalOnnetMins = gi.totalMins;
+                }
                 gi.totalSms = g.optInt("total_sms", 0);
                 gi.membersCount = g.getInt("members_count");
                 gi.validityDays = g.getInt("validity_days");
@@ -104,10 +113,11 @@ public class MfsSync {
     }
 
     /** Meri usage server par bhejo (insert ya update — device_id par upsert) */
-    public static void upsertMember(MfsStore st, long usedBytes, int usedMins, int usedSms, Cb<Boolean> cb) {
+    public static void upsertMember(MfsStore st, long usedBytes, int usedMins,
+                                    int usedOnnet, int usedOffnet, int usedSms, Cb<Boolean> cb) {
         EX.execute(() -> {
             try {
-                upsertMemberSync(st, usedBytes, usedMins, usedSms);
+                upsertMemberSync(st, usedBytes, usedMins, usedOnnet, usedOffnet, usedSms);
                 post(() -> cb.ok(true));
             } catch (Exception e) {
                 post(() -> cb.fail(String.valueOf(e.getMessage())));
@@ -121,7 +131,7 @@ public class MfsSync {
             try {
                 String body = request("GET",
                         "/rest/v1/mfs_members?group_code=eq." + enc(code)
-                                + "&select=name,device_id,used_bytes,used_mins,used_sms,updated_at"
+                                + "&select=name,device_id,used_bytes,used_mins,used_onnet_mins,used_offnet_mins,used_sms,updated_at"
                                 + "&order=used_bytes.desc", null, null);
                 JSONArray arr = new JSONArray(body);
                 List<MemberRow> out = new ArrayList<>();
@@ -132,6 +142,12 @@ public class MfsSync {
                     r.deviceId = m.getString("device_id");
                     r.usedBytes = m.getLong("used_bytes");
                     r.usedMins = m.optInt("used_mins", 0);
+                    r.usedOnnetMins = m.optInt("used_onnet_mins", 0);
+                    r.usedOffnetMins = m.optInt("used_offnet_mins", 0);
+                    // Purani (v2) row: split khaali ho to kul minutes on-net samjho
+                    if (r.usedOnnetMins == 0 && r.usedOffnetMins == 0 && r.usedMins > 0) {
+                        r.usedOnnetMins = r.usedMins;
+                    }
                     r.usedSms = m.optInt("used_sms", 0);
                     r.updatedAtMs = parseIso(m.getString("updated_at"));
                     out.add(r);
@@ -184,13 +200,16 @@ public class MfsSync {
 
     // ---------- internals ----------
 
-    private static void upsertMemberSync(MfsStore st, long usedBytes, int usedMins, int usedSms) throws Exception {
+    private static void upsertMemberSync(MfsStore st, long usedBytes, int usedMins,
+                                         int usedOnnet, int usedOffnet, int usedSms) throws Exception {
         JSONObject m = new JSONObject();
         m.put("group_code", st.joinCode);
         m.put("device_id", st.deviceId);
         m.put("name", st.myName);
         m.put("used_bytes", usedBytes);
         m.put("used_mins", usedMins);
+        m.put("used_onnet_mins", usedOnnet);
+        m.put("used_offnet_mins", usedOffnet);
         m.put("used_sms", usedSms);
         m.put("updated_at", iso(System.currentTimeMillis()));
         request("POST", "/rest/v1/mfs_members?on_conflict=group_code,device_id",

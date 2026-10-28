@@ -20,9 +20,11 @@
         android:label="MyFiveShare"
         android:theme="@style/Theme.SettingsGuide">
 
-        <!-- Samne MyFiveShare khulega (Zahid, 2026-10-28) -->
+        <!-- Samne MyFiveShare khulega (Zahid, 2026-10-28).
+             Apna theme: NoActionBar — upar wala duplicate title bar khatam. -->
         <activity
             android:name="com.myfiveshare.app.MfsActivity"
+            android:theme="@style/Theme.MyFiveShare"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
