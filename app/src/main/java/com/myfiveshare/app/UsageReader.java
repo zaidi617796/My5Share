@@ -56,6 +56,63 @@ public class UsageReader {
         }
     }
 
+    /** Ek runtime permission mili hui hai ya nahi */
+    public static boolean hasPerm(Context ctx, String perm) {
+        try {
+            return ctx.checkSelfPermission(perm)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * startMs se ab tak ki kul call minutes (CallLog se — incoming + outgoing).
+     * READ_CALL_LOG ki ijazat na ho ya error aaye to -1.
+     */
+    public static int callMinutesUsed(Context ctx, long startMs) {
+        if (!hasPerm(ctx, android.Manifest.permission.READ_CALL_LOG)) return -1;
+        android.database.Cursor c = null;
+        try {
+            c = ctx.getContentResolver().query(
+                    android.provider.CallLog.Calls.CONTENT_URI,
+                    new String[]{android.provider.CallLog.Calls.DURATION},
+                    android.provider.CallLog.Calls.DATE + " > ?",
+                    new String[]{String.valueOf(startMs)}, null);
+            if (c == null) return -1;
+            long secs = 0;
+            int di = c.getColumnIndex(android.provider.CallLog.Calls.DURATION);
+            while (c.moveToNext()) secs += Math.max(0, c.getLong(di));
+            return (int) Math.round(secs / 60.0);
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
+    /**
+     * startMs se ab tak bheje gaye SMS ki tadaad (content://sms/sent).
+     * READ_SMS ki ijazat na ho ya error aaye to -1.
+     */
+    public static int smsSentCount(Context ctx, long startMs) {
+        if (!hasPerm(ctx, android.Manifest.permission.READ_SMS)) return -1;
+        android.database.Cursor c = null;
+        try {
+            c = ctx.getContentResolver().query(
+                    android.net.Uri.parse("content://sms/sent"),
+                    new String[]{"_id"},
+                    "date > ?",
+                    new String[]{String.valueOf(startMs)}, null);
+            if (c == null) return -1;
+            return c.getCount();
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
     /** Bytes ko insaani shakl me: "1.25 GB" / "850 MB" */
     public static String humanGb(long bytes) {
         if (bytes < 0) return "--";

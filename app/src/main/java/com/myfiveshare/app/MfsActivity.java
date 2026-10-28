@@ -3,6 +3,7 @@ package com.myfiveshare.app;
 import android.app.DatePickerDialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -20,61 +21,126 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * MyFiveShare — sharing package ka hisaab.
- * v1: Usage Access + asal usage reading + package setup + fair-share dashboard (single phone).
- * Group sync (sab members ek dashboard par) backend ke saath agle version me.
- * UI poori programmatic hai (koi layout XML nahi) — UdhaarWapas/NoFap wali pattern.
+ * MyFiveShare v2 — auto-sync group hisaab.
+ * Tabs: Home (mera data/minutes/SMS vs hissa) | Members (sab ka synced hisaab) | Admin/Member.
+ * Settings (gear): zubaan English / Urdu. Theme: SIMOSA (Jazz World) jaisi halki + laal/bengni.
+ * Group sync Supabase REST se (MfsSync). UI poori programmatic.
  */
 public class MfsActivity extends AppCompatActivity {
 
-    private static final int BG = Color.parseColor("#0F172A");
-    private static final int CARD = Color.parseColor("#1B2A4A");
-    private static final int CARD2 = Color.parseColor("#16233F");
-    private static final int CYAN = Color.parseColor("#00E5FF");
-    private static final int WHITE = Color.WHITE;
-    private static final int MUTED = Color.parseColor("#8A9ABF");
-    private static final int GREEN = Color.parseColor("#22C55E");
+    // SIMOSA jaisi halki theme: safed cards, halka pas-manzar, Jazz laal + bengni
+    private static final int BG = Color.parseColor("#F4F5FA");
+    private static final int CARD = Color.WHITE;
+    private static final int STROKE = Color.parseColor("#E2E5F1");
+    private static final int TEXT = Color.parseColor("#191932");
+    private static final int MUTED = Color.parseColor("#6E7191");
+    private static final int RED = Color.parseColor("#E4002B");
+    private static final int VIOLET = Color.parseColor("#7B2FF7");
+    private static final int INPUT_BG = Color.parseColor("#EEF0F7");
+    private static final int TRACK = Color.parseColor("#E8EAF3");
+    private static final int GREEN = Color.parseColor("#1FA84A");
     private static final int AMBER = Color.parseColor("#F59E0B");
-    private static final int RED = Color.parseColor("#EF4444");
-    private static final int DARK_TEXT = Color.parseColor("#0F172A");
+    private static final int OVER = Color.parseColor("#D90429");
+    private static final int AMBER_BG = Color.parseColor("#FFF3D6");
+    private static final int TAB_TINT = Color.parseColor("#FDECEF");
 
-    private static final int SCREEN_SETUP = 0, SCREEN_HOME = 1, SCREEN_MEMBERS = 2;
-    private int screen = SCREEN_SETUP;
+    private static final int REQ_CALL = 41, REQ_SMS = 42;
 
     private MfsStore store;
-    private LinearLayout root;
+    private LinearLayout content;
+    private LinearLayout tabBar;
+    private final TextView[] tabViews = new TextView[3];
+    private int tab = 0;
+    private boolean inSettings = false;
+    private int renderGen = 0;
     private long selStartMs;
+    private List<MfsSync.MemberRow> lastMembers;
+
+    private String L(String k) { return MfsLang.s(k); }
+
+    private String F(String k, Object... a) { return String.format(Locale.US, L(k), a); }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         store = new MfsStore(this);
+        MfsLang.lang = store.lang;
         selStartMs = startOfToday();
 
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(BG);
-        sv.setFillViewport(true);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(24));
-        sv.addView(root);
-        setContentView(sv);
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundColor(BG);
 
-        if (store.setupDone) showHome(); else showSetup();
+        // Upar wali patti: gradient (laal -> bengni), naam + gear
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable grad = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT, new int[]{RED, VIOLET});
+        top.setBackground(grad);
+        top.setPadding(dp(16), dp(12), dp(10), dp(12));
+        TextView title = new TextView(this);
+        title.setText("MyFiveShare");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(21);
+        title.setTypeface(null, Typeface.BOLD);
+        top.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView gear = new TextView(this);
+        gear.setText("⚙");
+        gear.setTextColor(Color.WHITE);
+        gear.setTextSize(24);
+        gear.setPadding(dp(10), dp(2), dp(10), dp(2));
+        gear.setOnClickListener(v -> showSettings());
+        top.addView(gear);
+        shell.addView(top);
+
+        ScrollView sv = new ScrollView(this);
+        sv.setFillViewport(true);
+        content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(14), dp(16), dp(24));
+        sv.addView(content);
+        shell.addView(sv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        // Neeche tabs: Home | Members | Admin/Member
+        tabBar = new LinearLayout(this);
+        tabBar.setOrientation(LinearLayout.HORIZONTAL);
+        tabBar.setBackgroundColor(Color.WHITE);
+        tabBar.setPadding(dp(6), dp(6), dp(6), dp(8));
+        String[] names = {"tab_home", "tab_members", "tab_admin"};
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            TextView t = new TextView(this);
+            t.setGravity(Gravity.CENTER);
+            t.setTextSize(14);
+            t.setPadding(dp(4), dp(10), dp(4), dp(10));
+            t.setOnClickListener(v -> showTab(idx));
+            tabViews[i] = t;
+            tabBar.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        }
+        shell.addView(tabBar);
+        setContentView(shell);
+
+        if (store.setupDone) showTab(0); else showSetup();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Setup form ke darmiyan wapas aane par form na ude; baaki screens refresh
-        if (screen == SCREEN_HOME) showHome();
-        else if (screen == SCREEN_MEMBERS) showMembers();
+        // Ijazat day kar wapas aane par screen taza ho jaye (setup form na ude)
+        if (store != null && store.setupDone && !inSettings) showTab(tab);
     }
 
     // ================= helpers =================
@@ -83,10 +149,11 @@ public class MfsActivity extends AppCompatActivity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private GradientDrawable roundRect(int color, int radiusDp) {
+    private GradientDrawable roundRect(int color, int radiusDp, boolean stroke) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radiusDp));
+        if (stroke) d.setStroke(dp(1), STROKE);
         return d;
     }
 
@@ -95,14 +162,22 @@ public class MfsActivity extends AppCompatActivity {
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        if (bold) t.setTypeface(null, android.graphics.Typeface.BOLD);
+        if (bold) t.setTypeface(null, Typeface.BOLD);
+        return t;
+    }
+
+    private TextView spaced(TextView t, int topDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(topDp);
+        t.setLayoutParams(lp);
         return t;
     }
 
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(roundRect(CARD, 14));
+        c.setBackground(roundRect(CARD, 14, true));
         c.setPadding(dp(14), dp(14), dp(14), dp(14));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -111,14 +186,19 @@ public class MfsActivity extends AppCompatActivity {
         return c;
     }
 
-    private Button button(String label, int bg, int fg) {
+    private Button button(String label, boolean primary) {
         Button b = new Button(this);
         b.setText(label);
-        b.setTextColor(fg);
         b.setTextSize(15);
-        b.setTypeface(null, android.graphics.Typeface.BOLD);
+        b.setTypeface(null, Typeface.BOLD);
         b.setAllCaps(false);
-        b.setBackground(roundRect(bg, 24));
+        if (primary) {
+            b.setTextColor(Color.WHITE);
+            b.setBackground(roundRect(RED, 24, false));
+        } else {
+            b.setTextColor(TEXT);
+            b.setBackground(roundRect(Color.WHITE, 24, true));
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
         lp.topMargin = dp(10);
@@ -130,9 +210,9 @@ public class MfsActivity extends AppCompatActivity {
         EditText e = new EditText(this);
         e.setHint(hint);
         e.setHintTextColor(MUTED);
-        e.setTextColor(WHITE);
+        e.setTextColor(TEXT);
         e.setTextSize(15);
-        e.setBackground(roundRect(CARD2, 10));
+        e.setBackground(roundRect(INPUT_BG, 10, false));
         e.setPadding(dp(12), dp(10), dp(12), dp(10));
         if (number) {
             e.setInputType(decimal
@@ -152,14 +232,14 @@ public class MfsActivity extends AppCompatActivity {
         ArrayAdapter<String> ad = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, ops) {
             @Override public View getView(int pos, View cv, ViewGroup parent) {
                 TextView t = (TextView) super.getView(pos, cv, parent);
-                t.setTextColor(WHITE);
+                t.setTextColor(TEXT);
                 t.setTextSize(15);
                 return t;
             }
             @Override public View getDropDownView(int pos, View cv, ViewGroup parent) {
                 TextView t = (TextView) super.getDropDownView(pos, cv, parent);
-                t.setTextColor(WHITE);
-                t.setBackgroundColor(CARD);
+                t.setTextColor(TEXT);
+                t.setBackgroundColor(Color.WHITE);
                 t.setTextSize(15);
                 t.setPadding(dp(12), dp(10), dp(12), dp(10));
                 return t;
@@ -167,7 +247,7 @@ public class MfsActivity extends AppCompatActivity {
         };
         ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         s.setAdapter(ad);
-        s.setBackground(roundRect(CARD2, 10));
+        s.setBackground(roundRect(INPUT_BG, 10, false));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
         lp.topMargin = dp(8);
@@ -175,18 +255,17 @@ public class MfsActivity extends AppCompatActivity {
         return s;
     }
 
-    /** Progress bar: track ke andar rang-daar hissa (0..1 se zyada bhi ho to full) */
     private View progressBar(double frac, int color) {
         LinearLayout track = new LinearLayout(this);
         track.setOrientation(LinearLayout.HORIZONTAL);
-        track.setBackground(roundRect(CARD2, 8));
+        track.setBackground(roundRect(TRACK, 8, false));
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(16));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(14));
         tlp.topMargin = dp(10);
         track.setLayoutParams(tlp);
         double f = Math.max(0, Math.min(1, frac));
         View fill = new View(this);
-        fill.setBackground(roundRect(color, 8));
+        fill.setBackground(roundRect(color, 8, false));
         track.addView(fill, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, (float) f));
         View rest = new View(this);
         track.addView(rest, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, (float) (1 - f)));
@@ -214,7 +293,7 @@ public class MfsActivity extends AppCompatActivity {
             s.set(y, m, d, 0, 0, 0);
             s.set(Calendar.MILLISECOND, 0);
             selStartMs = s.getTimeInMillis();
-            label.setText("Shuru ki date: " + fmtDate(selStartMs));
+            label.setText(L("start_date") + fmtDate(selStartMs));
         }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show();
     }
 
@@ -222,326 +301,25 @@ public class MfsActivity extends AppCompatActivity {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 
-    private void header() {
-        TextView t = text("MyFiveShare", 26, WHITE, true);
-        root.addView(t);
-        TextView sub = text("Sharing package ka saaf hisaab — kis ne kitna use kiya, sab ko nazar aaye.",
-                13, MUTED, false);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(4);
-        sub.setLayoutParams(lp);
-        root.addView(sub);
-    }
-
     private void accessCardIfNeeded(LinearLayout parent) {
         if (UsageReader.hasUsageAccess(this)) return;
         LinearLayout c = card();
-        c.setBackground(roundRect(Color.parseColor("#3A2A10"), 14));
-        c.addView(text("⚠ Usage Access chahiye", 16, AMBER, true));
-        TextView d = text("App tumhari asal data usage tabhi parh sakti hai jab tum ek dafa "
-                + "Settings me ja kar MyFiveShare ko Usage Access do. Baghair is ke hisaab nahi ban sakta.",
-                13, WHITE, false);
+        c.setBackground(roundRect(AMBER_BG, 14, false));
+        c.addView(text(L("access_title"), 16, TEXT, true));
+        c.addView(spaced(text(L("access_body"), 13, TEXT, false), 6));
+        Button b = new Button(this);
+        b.setText(L("access_btn"));
+        b.setTextColor(TEXT);
+        b.setTypeface(null, Typeface.BOLD);
+        b.setAllCaps(false);
+        b.setBackground(roundRect(AMBER, 24, false));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(6);
-        d.setLayoutParams(lp);
-        c.addView(d);
-        Button b = button("Usage Access do", AMBER, DARK_TEXT);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        lp.topMargin = dp(10);
+        b.setLayoutParams(lp);
         b.setOnClickListener(x -> UsageReader.openUsageSettings(this));
         c.addView(b);
         parent.addView(c);
-    }
-
-    // ================= SETUP =================
-
-    private void showSetup() {
-        screen = SCREEN_SETUP;
-        root.removeAllViews();
-        header();
-        accessCardIfNeeded(root);
-
-        // ---- Owner: package banao ----
-        LinearLayout oc = card();
-        oc.addView(text("Package banao — Owner", 17, CYAN, true));
-        final EditText etName = input("Apna naam", false, false);
-        final Spinner spOp = operatorSpinner();
-        final EditText etGb = input("Kul data (GB) — masalan 100", true, true);
-        final EditText etMembers = input("Kitne log share kar rahe hain — masalan 5", true, false);
-        final EditText etDays = input("Package kitne din ka hai — masalan 30", true, false);
-        etDays.setText("30");
-        final TextView tvDate = text("Shuru ki date: " + fmtDate(selStartMs), 14, WHITE, false);
-        Button btnDate = button("Shuru ki date chuno", CARD2, CYAN);
-        btnDate.setOnClickListener(x -> pickDate(tvDate));
-        Button btnCreate = button("Group banao", CYAN, DARK_TEXT);
-        oc.addView(etName); oc.addView(spOp); oc.addView(etGb); oc.addView(etMembers); oc.addView(etDays);
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dlp.topMargin = dp(10);
-        tvDate.setLayoutParams(dlp);
-        oc.addView(tvDate); oc.addView(btnDate); oc.addView(btnCreate);
-        root.addView(oc);
-
-        btnCreate.setOnClickListener(x -> {
-            String name = etName.getText().toString().trim();
-            Double gb = parseDouble(etGb.getText().toString());
-            Integer mem = parseInt(etMembers.getText().toString());
-            Integer days = parseInt(etDays.getText().toString());
-            if (name.isEmpty()) { toast("Pehle apna naam likho"); return; }
-            if (gb == null || gb <= 0) { toast("Kul data (GB) sahi likho"); return; }
-            if (mem == null || mem < 2) { toast("Members kam az kam 2 hon"); return; }
-            if (days == null || days < 1) { toast("Package ke din sahi likho"); return; }
-            store.owner = true;
-            store.myName = name;
-            store.operator = String.valueOf(spOp.getSelectedItem());
-            store.totalGb = gb;
-            store.members = mem;
-            store.validityDays = days;
-            store.cycleStartMs = selStartMs;
-            store.joinCode = MfsStore.newJoinCode();
-            store.setupDone = true;
-            store.save();
-            toast("Group ban gaya! Code: " + store.joinCode);
-            showHome();
-        });
-
-        // ---- Member: join karo ----
-        LinearLayout jc = card();
-        jc.addView(text("Group join karo — Member", 17, CYAN, true));
-        final EditText etJName = input("Apna naam", false, false);
-        final EditText etJCode = input("Owner wala join code — masalan K7PX2A", false, false);
-        final Spinner spJOp = operatorSpinner();
-        final EditText etJGb = input("Kul data (GB) — owner se pooch kar", true, true);
-        final EditText etJMembers = input("Kitne members hain — owner se pooch kar", true, false);
-        final EditText etJDays = input("Package kitne din ka hai", true, false);
-        etJDays.setText("30");
-        final TextView tvJDate = text("Shuru ki date: " + fmtDate(selStartMs), 14, WHITE, false);
-        Button btnJDate = button("Shuru ki date chuno", CARD2, CYAN);
-        btnJDate.setOnClickListener(x -> pickDate(tvJDate));
-        TextView note = text("Note: abhi ke version me package ki details owner se pooch kar dalni hain — "
-                + "auto-sync agle version me aa raha hai, phir code dalte hi sab khud aa jayega.", 12, MUTED, false);
-        Button btnJoin = button("Join karo", CYAN, DARK_TEXT);
-        jc.addView(etJName); jc.addView(etJCode); jc.addView(spJOp); jc.addView(etJGb);
-        jc.addView(etJMembers); jc.addView(etJDays);
-        tvJDate.setLayoutParams(dlp);
-        jc.addView(tvJDate); jc.addView(btnJDate);
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        nlp.topMargin = dp(10);
-        note.setLayoutParams(nlp);
-        jc.addView(note); jc.addView(btnJoin);
-        root.addView(jc);
-
-        btnJoin.setOnClickListener(x -> {
-            String name = etJName.getText().toString().trim();
-            String code = etJCode.getText().toString().trim().toUpperCase(Locale.US);
-            Double gb = parseDouble(etJGb.getText().toString());
-            Integer mem = parseInt(etJMembers.getText().toString());
-            Integer days = parseInt(etJDays.getText().toString());
-            if (name.isEmpty()) { toast("Pehle apna naam likho"); return; }
-            if (code.length() < 4) { toast("Join code sahi likho"); return; }
-            if (gb == null || gb <= 0) { toast("Kul data (GB) sahi likho"); return; }
-            if (mem == null || mem < 2) { toast("Members kam az kam 2 hon"); return; }
-            if (days == null || days < 1) { toast("Package ke din sahi likho"); return; }
-            store.owner = false;
-            store.myName = name;
-            store.operator = String.valueOf(spJOp.getSelectedItem());
-            store.totalGb = gb;
-            store.members = mem;
-            store.validityDays = days;
-            store.cycleStartMs = selStartMs;
-            store.joinCode = code;
-            store.setupDone = true;
-            store.save();
-            toast("Join ho gaya!");
-            showHome();
-        });
-
-        TextView foot = text("Imandari: ye app kisi ka data rok nahi sakti — sirf hisaab dikhati hai. "
-                + "Har member ko apne phone par app lagani hogi, tabhi us ka istemal gina jayega.",
-                12, MUTED, false);
-        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        flp.topMargin = dp(14);
-        foot.setLayoutParams(flp);
-        root.addView(foot);
-    }
-
-    // ================= HOME =================
-
-    private void showHome() {
-        screen = SCREEN_HOME;
-        store = new MfsStore(this);
-        root.removeAllViews();
-        header();
-        accessCardIfNeeded(root);
-
-        boolean access = UsageReader.hasUsageAccess(this);
-        long usedBytes = access
-                ? UsageReader.mobileUsageBytes(this, store.cycleStartMs, System.currentTimeMillis())
-                : -1;
-        double usedGb = UsageReader.toGb(usedBytes);
-        double fair = store.fairShareGb();
-        double pct = (usedGb >= 0 && fair > 0) ? usedGb / fair : -1;
-
-        // Group card
-        LinearLayout gc = card();
-        gc.addView(text(store.operator + " Sharing Package • " + (store.owner ? "Owner" : "Member"),
-                15, CYAN, true));
-        TextView code = text("Join code: " + store.joinCode, 20, WHITE, true);
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        clp.topMargin = dp(8);
-        code.setLayoutParams(clp);
-        gc.addView(code);
-        gc.addView(text(String.format(Locale.US,
-                "Kul package: %.0f GB • Members: %d • Ek ka hissa: %.1f GB",
-                store.totalGb, store.members, fair), 13, MUTED, false));
-        gc.addView(progressBar(store.cycleProgress(), CYAN));
-        int left = store.daysLeft();
-        gc.addView(text(left > 0
-                        ? "Cycle: " + fmtDate(store.cycleStartMs) + " se • " + left + " din baqi"
-                        : "Cycle khatam ho gaya — naya package laga kar setup dobara karo",
-                13, left > 0 ? MUTED : RED, false));
-        Button btnCode = button("Join code share karo", CARD2, CYAN);
-        btnCode.setOnClickListener(x -> shareText("MyFiveShare group code: " + store.joinCode
-                + "\nApp laga kar ye code dalo, hum sab ka sharing hisaab ek jagah dikhega."));
-        gc.addView(btnCode);
-        root.addView(gc);
-
-        // Mera istemal card
-        LinearLayout uc = card();
-        uc.addView(text("Mera istemal (" + store.myName + ")", 17, WHITE, true));
-        if (!access) {
-            uc.addView(text("Usage Access ke baghair istemal nahi parha ja sakta — upar wala button dabao.",
-                    13, AMBER, false));
-        } else if (usedGb < 0) {
-            uc.addView(text("Abhi usage parhne me masla hai — thodi dair baad Refresh karo.", 13, AMBER, false));
-        } else {
-            TextView big = text(UsageReader.humanGb(usedBytes), 34, WHITE, true);
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            blp.topMargin = dp(6);
-            big.setLayoutParams(blp);
-            uc.addView(big);
-            uc.addView(text(String.format(Locale.US, "Mera hissa: %.1f GB • Use: %.0f%%",
-                    fair, Math.max(0, pct * 100)), 13, MUTED, false));
-            int barColor = pct >= 1 ? RED : (pct >= 0.8 ? AMBER : GREEN);
-            uc.addView(progressBar(pct, barColor));
-            if (pct >= 1) {
-                TextView w = text("⚠ Tum apne hisse se ZYADA use kar chuke ho!", 15, RED, true);
-                w.setLayoutParams(blp);
-                uc.addView(w);
-            } else if (pct >= 0.8) {
-                uc.addView(text("Hissa khatam hone wala hai — sambhal kar use karo.", 13, AMBER, false));
-            }
-            if (usedBytes == 0) {
-                uc.addView(text("Abhi 0 aya hai. Agar data use kiya hai to kuch dair baad Refresh karo — "
-                        + "kuch phones par stats dair se update hote hain.", 12, MUTED, false));
-            }
-        }
-        root.addView(uc);
-
-        // Actions
-        Button btnReport = button("Report share karo (WhatsApp)", GREEN, DARK_TEXT);
-        btnReport.setOnClickListener(x -> shareText(reportText(usedBytes, usedGb, pct)));
-        root.addView(btnReport);
-        Button btnMembers = button("Members dekho", CARD, CYAN);
-        btnMembers.setOnClickListener(x -> showMembers());
-        root.addView(btnMembers);
-        Button btnRefresh = button("Refresh", CARD, CYAN);
-        btnRefresh.setOnClickListener(x -> showHome());
-        root.addView(btnRefresh);
-        Button btnReset = button("Naya group / Setup badlo", CARD, RED);
-        btnReset.setOnClickListener(x -> new AlertDialog.Builder(this)
-                .setTitle("Setup badlo?")
-                .setMessage("Purana group aur hisaab is phone se hat jayega. Aage barhun?")
-                .setPositiveButton("Haan, badlo", (d, w) -> {
-                    store.clearAll();
-                    showSetup();
-                })
-                .setNegativeButton("Cancel", null)
-                .show());
-        root.addView(btnReset);
-
-        TextView note = text("Note: doosre members ka istemal un ke phones se sync hone par ek saath dikhega — "
-                + "ye suvidha agle version me aa rahi hai. Abhi har phone apna hisaab dikhata hai.",
-                12, MUTED, false);
-        LinearLayout.LayoutParams nlp2 = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        nlp2.topMargin = dp(14);
-        note.setLayoutParams(nlp2);
-        root.addView(note);
-    }
-
-    // ================= MEMBERS =================
-
-    private void showMembers() {
-        screen = SCREEN_MEMBERS;
-        root.removeAllViews();
-        header();
-        Button back = button("← Wapas", CARD, CYAN);
-        back.setOnClickListener(x -> showHome());
-        root.addView(back);
-
-        boolean access = UsageReader.hasUsageAccess(this);
-        long usedBytes = access
-                ? UsageReader.mobileUsageBytes(this, store.cycleStartMs, System.currentTimeMillis())
-                : -1;
-
-        LinearLayout mc = card();
-        mc.addView(text("Members (" + store.members + ")", 17, CYAN, true));
-        TextView me = text("• " + store.myName + " (tum) — "
-                        + (usedBytes >= 0 ? UsageReader.humanGb(usedBytes) : "data baqi"),
-                15, WHITE, false);
-        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        mlp.topMargin = dp(8);
-        me.setLayoutParams(mlp);
-        mc.addView(me);
-        for (int i = 2; i <= store.members; i++) {
-            TextView r = text("• Member " + i + " — data un ke phone se sync hone par aayega",
-                    14, MUTED, false);
-            r.setLayoutParams(mlp);
-            mc.addView(r);
-        }
-        root.addView(mc);
-        TextView n = text("Jo member app hi na lagaye ya sync na kare, us ka istemal nazar nahi aayega — "
-                + "ye khaali line khud ek ishara hai.", 12, MUTED, false);
-        n.setLayoutParams(mlp);
-        root.addView(n);
-    }
-
-    // ================= share / report =================
-
-    private String reportText(long usedBytes, double usedGb, double pct) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("MyFiveShare Report\n");
-        sb.append(store.operator).append(" package: ")
-                .append(String.format(Locale.US, "%.0f", store.totalGb)).append(" GB • Members: ")
-                .append(store.members).append("\n");
-        sb.append("Mera hissa: ").append(String.format(Locale.US, "%.1f", store.fairShareGb())).append(" GB\n");
-        if (usedGb >= 0) {
-            sb.append("Maine use kiya: ").append(UsageReader.humanGb(usedBytes))
-                    .append(" (").append(String.format(Locale.US, "%.0f", pct * 100)).append("%)");
-            if (pct >= 1) sb.append(" — hisse se ZYADA");
-            sb.append("\n");
-        } else {
-            sb.append("Mera istemal abhi parha nahi ja saka.\n");
-        }
-        int left = store.daysLeft();
-        sb.append(left > 0 ? ("Cycle me " + left + " din baqi.") : "Cycle khatam.");
-        sb.append("\n— MyFiveShare app se");
-        return sb.toString();
-    }
-
-    private void shareText(String s) {
-        try {
-            Intent i = new Intent(Intent.ACTION_SEND);
-            i.setType("text/plain");
-            i.putExtra(Intent.EXTRA_TEXT, s);
-            startActivity(Intent.createChooser(i, "Share karo"));
-        } catch (Exception ignored) {}
     }
 
     private Double parseDouble(String s) {
@@ -550,5 +328,539 @@ public class MfsActivity extends AppCompatActivity {
 
     private Integer parseInt(String s) {
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return null; }
+    }
+
+    private int parseIntOr0(String s) {
+        Integer v = parseInt(s);
+        return v == null ? 0 : Math.max(0, v);
+    }
+
+    /** Abhi ki meri usage teeno cheezon me — ijazat na ho to us hissa me 0/-1 ka saaf farq */
+    private long myDataBytes() {
+        if (!UsageReader.hasUsageAccess(this)) return -1;
+        return UsageReader.mobileUsageBytes(this, store.cycleStartMs, System.currentTimeMillis());
+    }
+
+    private int myMins() {
+        return UsageReader.callMinutesUsed(this, store.cycleStartMs);
+    }
+
+    private int mySms() {
+        return UsageReader.smsSentCount(this, store.cycleStartMs);
+    }
+
+    private void shareText(String s) {
+        try {
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType("text/plain");
+            i.putExtra(Intent.EXTRA_TEXT, s);
+            startActivity(Intent.createChooser(i, "Share"));
+        } catch (Exception ignored) {}
+    }
+
+    // ================= SETUP =================
+
+    private void showSetup() {
+        inSettings = false;
+        renderGen++;
+        tabBar.setVisibility(View.GONE);
+        content.removeAllViews();
+        content.addView(text(L("tagline"), 13, MUTED, false));
+        accessCardIfNeeded(content);
+
+        // ---- Admin: package banao ----
+        LinearLayout oc = card();
+        oc.addView(text(L("create_title"), 17, RED, true));
+        final EditText etName = input(L("your_name"), false, false);
+        final Spinner spOp = operatorSpinner();
+        final EditText etGb = input(L("total_gb_hint"), true, true);
+        final EditText etMins = input(L("total_mins_hint"), true, false);
+        final EditText etSms = input(L("total_sms_hint"), true, false);
+        final EditText etMembers = input(L("members_hint"), true, false);
+        final EditText etDays = input(L("days_hint"), true, false);
+        etDays.setText("30");
+        final TextView tvDate = text(L("start_date") + fmtDate(selStartMs), 14, TEXT, false);
+        Button btnDate = button(L("pick_date"), false);
+        btnDate.setOnClickListener(x -> pickDate(tvDate));
+        final Button btnCreate = button(L("create_btn"), true);
+        oc.addView(etName); oc.addView(spOp); oc.addView(etGb); oc.addView(etMins); oc.addView(etSms);
+        oc.addView(etMembers); oc.addView(etDays);
+        oc.addView(spaced(tvDate, 10));
+        oc.addView(btnDate); oc.addView(btnCreate);
+        content.addView(oc);
+
+        btnCreate.setOnClickListener(x -> {
+            String name = etName.getText().toString().trim();
+            Double gb = parseDouble(etGb.getText().toString());
+            Integer mem = parseInt(etMembers.getText().toString());
+            Integer days = parseInt(etDays.getText().toString());
+            if (name.isEmpty()) { toast(L("err_name")); return; }
+            if (gb == null || gb <= 0) { toast(L("err_gb")); return; }
+            if (mem == null || mem < 2) { toast(L("err_members")); return; }
+            if (days == null || days < 1) { toast(L("err_days")); return; }
+            store.owner = true;
+            store.myName = name;
+            store.operator = String.valueOf(spOp.getSelectedItem());
+            store.totalGb = gb;
+            store.totalMins = parseIntOr0(etMins.getText().toString());
+            store.totalSms = parseIntOr0(etSms.getText().toString());
+            store.members = mem;
+            store.validityDays = days;
+            store.cycleStartMs = selStartMs;
+            store.joinCode = MfsStore.newJoinCode();
+            btnCreate.setEnabled(false);
+            btnCreate.setText(L("creating"));
+            long db = myDataBytes();
+            MfsSync.createGroup(store, Math.max(0, db), Math.max(0, myMins()), Math.max(0, mySms()),
+                    new MfsSync.Cb<Boolean>() {
+                        @Override public void ok(Boolean v) {
+                            store.setupDone = true;
+                            store.save();
+                            toast(L("created_toast") + store.joinCode);
+                            showTab(0);
+                        }
+                        @Override public void fail(String msg) {
+                            btnCreate.setEnabled(true);
+                            btnCreate.setText(L("create_btn"));
+                            toast(L("err_net"));
+                        }
+                    });
+        });
+
+        // ---- Member: sirf code se join (sab tafseel khud aayegi) ----
+        LinearLayout jc = card();
+        jc.addView(text(L("join_title"), 17, RED, true));
+        final EditText etJName = input(L("your_name"), false, false);
+        final EditText etJCode = input(L("join_code_hint"), false, false);
+        final Button btnJoin = button(L("join_btn"), true);
+        jc.addView(etJName); jc.addView(etJCode);
+        jc.addView(spaced(text(L("join_auto_note"), 12, MUTED, false), 10));
+        jc.addView(btnJoin);
+        content.addView(jc);
+
+        btnJoin.setOnClickListener(x -> {
+            String name = etJName.getText().toString().trim();
+            String code = etJCode.getText().toString().trim().toUpperCase(Locale.US);
+            if (name.isEmpty()) { toast(L("err_name")); return; }
+            if (code.length() < 4) { toast(L("err_code")); return; }
+            btnJoin.setEnabled(false);
+            btnJoin.setText(L("joining"));
+            MfsSync.findGroup(code, new MfsSync.Cb<MfsSync.GroupInfo>() {
+                @Override public void ok(MfsSync.GroupInfo gi) {
+                    if (gi == null) {
+                        btnJoin.setEnabled(true);
+                        btnJoin.setText(L("join_btn"));
+                        toast(L("err_notfound"));
+                        return;
+                    }
+                    store.owner = false;
+                    store.myName = name;
+                    store.operator = gi.operator;
+                    store.totalGb = gi.totalGb;
+                    store.totalMins = gi.totalMins;
+                    store.totalSms = gi.totalSms;
+                    store.members = gi.membersCount;
+                    store.validityDays = gi.validityDays;
+                    store.cycleStartMs = gi.cycleStartMs;
+                    store.joinCode = gi.code;
+                    long db = myDataBytes();
+                    MfsSync.upsertMember(store, Math.max(0, db), Math.max(0, myMins()), Math.max(0, mySms()),
+                            new MfsSync.Cb<Boolean>() {
+                                @Override public void ok(Boolean v) {
+                                    store.setupDone = true;
+                                    store.save();
+                                    toast(L("joined_toast"));
+                                    showTab(0);
+                                }
+                                @Override public void fail(String msg) {
+                                    btnJoin.setEnabled(true);
+                                    btnJoin.setText(L("join_btn"));
+                                    toast(L("err_net"));
+                                }
+                            });
+                }
+                @Override public void fail(String msg) {
+                    btnJoin.setEnabled(true);
+                    btnJoin.setText(L("join_btn"));
+                    toast(L("err_net"));
+                }
+            });
+        });
+
+        // Note: Zahid ke hukm par "imandari wali baat" (disclaimer) app se hata di gayi hai (2026-10-28)
+    }
+
+    // ================= TABS =================
+
+    private void showTab(int i) {
+        tab = i;
+        inSettings = false;
+        store = new MfsStore(this);
+        MfsLang.lang = store.lang;
+        tabBar.setVisibility(View.VISIBLE);
+        String[] names = {"tab_home", "tab_members", store.owner ? "tab_admin" : "tab_member"};
+        for (int k = 0; k < 3; k++) {
+            tabViews[k].setText(L(names[k]));
+            boolean sel = k == i;
+            tabViews[k].setTextColor(sel ? RED : MUTED);
+            tabViews[k].setTypeface(null, sel ? Typeface.BOLD : Typeface.NORMAL);
+            tabViews[k].setBackground(sel ? roundRect(TAB_TINT, 18, false) : null);
+        }
+        if (i == 0) showDashboard();
+        else if (i == 1) showMembers();
+        else showRole();
+    }
+
+    // ---------- Dashboard ----------
+
+    private void showDashboard() {
+        renderGen++;
+        final int gen = renderGen;
+        content.removeAllViews();
+        accessCardIfNeeded(content);
+
+        final long dataBytes = myDataBytes();
+        final int mins = myMins();
+        final int sms = mySms();
+        final double fairGb = store.fairShareGb();
+
+        // Group card
+        LinearLayout gc = card();
+        gc.addView(text(store.operator + L("pkg_suffix") + " • " + L(store.owner ? "role_admin" : "role_member"),
+                15, VIOLET, true));
+        gc.addView(spaced(text(L("join_code_label") + store.joinCode, 20, TEXT, true), 8));
+        gc.addView(text(F("pkg_line", store.totalGb, store.members, fairGb), 13, MUTED, false));
+        if (store.totalMins > 0 || store.totalSms > 0) {
+            gc.addView(text(L("mins_u") + ": " + store.totalMins + " • " + L("sms_u") + ": " + store.totalSms,
+                    13, MUTED, false));
+        }
+        gc.addView(progressBar(store.cycleProgress(), VIOLET));
+        int left = store.daysLeft();
+        gc.addView(text(left > 0 ? F("cycle_left", fmtDate(store.cycleStartMs), left) : L("cycle_ended"),
+                13, left > 0 ? MUTED : OVER, false));
+        final TextView syncLine = spaced(text(L("syncing"), 12, MUTED, false), 8);
+        gc.addView(syncLine);
+        Button btnCode = button(L("share_code"), false);
+        btnCode.setOnClickListener(x -> shareText(F("share_code_msg", store.joinCode)));
+        gc.addView(btnCode);
+        content.addView(gc);
+
+        // Data card
+        content.addView(usageCard(L("data_u"),
+                dataBytes < 0 ? null : UsageReader.humanGb(dataBytes),
+                dataBytes < 0 ? -1 : UsageReader.toGb(dataBytes), fairGb, true, dataBytes == 0));
+
+        // Minutes card (sirf tab jab package me minutes hon ya ijazat/usage maujood ho)
+        if (store.totalMins > 0 || mins >= 0) {
+            if (mins < 0) content.addView(permCard(L("mins_u"), L("perm_call"), REQ_CALL,
+                    android.Manifest.permission.READ_CALL_LOG));
+            else content.addView(usageCard(L("mins_u"), mins + " " + L("mins_u"),
+                    mins, store.fairShareMins(), false, false));
+        } else {
+            content.addView(permCard(L("mins_u"), L("perm_call"), REQ_CALL,
+                    android.Manifest.permission.READ_CALL_LOG));
+        }
+
+        // SMS card
+        if (store.totalSms > 0 || sms >= 0) {
+            if (sms < 0) content.addView(permCard(L("sms_u"), L("perm_sms"), REQ_SMS,
+                    android.Manifest.permission.READ_SMS));
+            else content.addView(usageCard(L("sms_u"), sms + " " + L("sms_u"),
+                    sms, store.fairShareSms(), false, false));
+        } else {
+            content.addView(permCard(L("sms_u"), L("perm_sms"), REQ_SMS,
+                    android.Manifest.permission.READ_SMS));
+        }
+
+        Button btnReport = button(L("report_btn"), true);
+        btnReport.setOnClickListener(x -> shareText(reportText(dataBytes, mins, sms)));
+        content.addView(btnReport);
+        Button btnRefresh = button(L("refresh"), false);
+        btnRefresh.setOnClickListener(x -> showDashboard());
+        content.addView(btnRefresh);
+
+        // Sync: pehle meri usage bhejo, phir poora group lao
+        MfsSync.upsertMember(store, Math.max(0, dataBytes), Math.max(0, mins), Math.max(0, sms),
+                new MfsSync.Cb<Boolean>() {
+                    @Override public void ok(Boolean v) { fetchGroup(gen, syncLine); }
+                    @Override public void fail(String msg) { fetchGroup(gen, syncLine); }
+                });
+    }
+
+    private void fetchGroup(final int gen, final TextView syncLine) {
+        MfsSync.fetchMembers(store.joinCode, new MfsSync.Cb<List<MfsSync.MemberRow>>() {
+            @Override public void ok(List<MfsSync.MemberRow> rows) {
+                lastMembers = rows;
+                cacheMembers(rows);
+                if (gen != renderGen || tab != 0) return;
+                long sum = 0;
+                for (MfsSync.MemberRow r : rows) sum += r.usedBytes;
+                syncLine.setText(F("group_used", UsageReader.humanGb(sum), store.totalGb));
+            }
+            @Override public void fail(String msg) {
+                if (gen != renderGen || tab != 0) return;
+                syncLine.setText(L("sync_fail"));
+            }
+        });
+    }
+
+    /** Ek istemal wala card: bara number, hissa, rang-daar bar, warning */
+    private LinearLayout usageCard(String title, String bigText, double used, double fair,
+                                   boolean isData, boolean zeroData) {
+        LinearLayout c = card();
+        c.addView(text(title, 16, TEXT, true));
+        if (bigText == null) {
+            c.addView(spaced(text(isData ? L("access_short") : L("usage_fail"), 13, AMBER, false), 6));
+            return c;
+        }
+        c.addView(spaced(text(bigText, 32, TEXT, true), 4));
+        if (fair > 0) {
+            double pct = used / fair;
+            c.addView(text(F("share_line2", fair, Math.max(0, pct * 100)), 13, MUTED, false));
+            int color = pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN);
+            c.addView(progressBar(pct, color));
+            if (pct >= 1) c.addView(spaced(text(L("over_warn"), 14, OVER, true), 8));
+            else if (pct >= 0.8) c.addView(spaced(text(L("almost_warn"), 13, AMBER, false), 8));
+        }
+        if (zeroData) c.addView(spaced(text(L("zero_note"), 12, MUTED, false), 8));
+        return c;
+    }
+
+    /** Ijazat mangne wala card (minutes / SMS) */
+    private LinearLayout permCard(String title, String body, final int reqCode, final String perm) {
+        LinearLayout c = card();
+        c.addView(text(title, 16, TEXT, true));
+        c.addView(spaced(text(body, 13, MUTED, false), 6));
+        Button b = button(L("grant"), false);
+        b.setOnClickListener(x -> requestPermissions(new String[]{perm}, reqCode));
+        c.addView(b);
+        return c;
+    }
+
+    // ---------- Members ----------
+
+    private void showMembers() {
+        renderGen++;
+        final int gen = renderGen;
+        content.removeAllViews();
+        if (lastMembers == null) lastMembers = parseCache();
+        renderMembers(gen);
+        MfsSync.fetchMembers(store.joinCode, new MfsSync.Cb<List<MfsSync.MemberRow>>() {
+            @Override public void ok(List<MfsSync.MemberRow> rows) {
+                lastMembers = rows;
+                cacheMembers(rows);
+                if (gen == renderGen && tab == 1) renderMembers(gen);
+            }
+            @Override public void fail(String msg) {
+                if (gen == renderGen && tab == 1) renderMembers(gen);
+            }
+        });
+    }
+
+    private void renderMembers(int gen) {
+        content.removeAllViews();
+        LinearLayout mc = card();
+        mc.addView(text(F("members_title", store.members), 17, VIOLET, true));
+        List<MfsSync.MemberRow> rows = lastMembers;
+        if (rows == null) {
+            mc.addView(spaced(text(L("syncing"), 13, MUTED, false), 8));
+        } else {
+            double fairGb = store.fairShareGb();
+            for (MfsSync.MemberRow r : rows) {
+                boolean me = r.deviceId.equals(store.deviceId);
+                mc.addView(spaced(text("• " + r.name + (me ? L("you_suffix") : ""), 15, TEXT, true), 10));
+                double gb = UsageReader.toGb(r.usedBytes);
+                String line2 = UsageReader.humanGb(r.usedBytes)
+                        + " • " + r.usedMins + " " + L("mins_u")
+                        + " • " + r.usedSms + " " + L("sms_u");
+                if (fairGb > 0 && gb >= 0) {
+                    double pct = gb / fairGb;
+                    line2 += " • " + String.format(Locale.US, "%.0f%%", pct * 100);
+                }
+                mc.addView(text(line2, 13, MUTED, false));
+                if (fairGb > 0 && gb >= 0) {
+                    double pct = gb / fairGb;
+                    mc.addView(progressBar(pct, pct >= 1 ? OVER : (pct >= 0.8 ? AMBER : GREEN)));
+                }
+                mc.addView(text(F("last_sync", agoText(r.updatedAtMs)), 11, MUTED, false));
+            }
+            for (int i = rows.size() + 1; i <= store.members; i++) {
+                mc.addView(spaced(text("• " + L("tab_member") + " " + i + " — " + L("not_joined"),
+                        14, MUTED, false), 10));
+                mc.addView(text(L("member_data_note"), 11, MUTED, false));
+            }
+        }
+        content.addView(mc);
+        Button btnRefresh = button(L("refresh"), false);
+        btnRefresh.setOnClickListener(x -> showMembers());
+        content.addView(btnRefresh);
+    }
+
+    private String agoText(long updatedAtMs) {
+        if (updatedAtMs <= 0) return L("just_now");
+        long minsAgo = (System.currentTimeMillis() - updatedAtMs) / 60000;
+        if (minsAgo < 1) return L("just_now");
+        if (minsAgo < 60) return minsAgo + L("mins");
+        if (minsAgo < 1440) return (minsAgo / 60) + L("hours");
+        return (minsAgo / 1440) + L("days_u");
+    }
+
+    private void cacheMembers(List<MfsSync.MemberRow> rows) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (MfsSync.MemberRow r : rows) {
+                JSONObject o = new JSONObject();
+                o.put("n", r.name);
+                o.put("d", r.deviceId);
+                o.put("b", r.usedBytes);
+                o.put("m", r.usedMins);
+                o.put("s", r.usedSms);
+                o.put("u", r.updatedAtMs);
+                arr.put(o);
+            }
+            store.membersCacheJson = arr.toString();
+            store.membersCacheAt = System.currentTimeMillis();
+            store.save();
+        } catch (Exception ignored) {}
+    }
+
+    private List<MfsSync.MemberRow> parseCache() {
+        try {
+            if (store.membersCacheJson == null || store.membersCacheJson.isEmpty()) return null;
+            JSONArray arr = new JSONArray(store.membersCacheJson);
+            List<MfsSync.MemberRow> out = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                MfsSync.MemberRow r = new MfsSync.MemberRow();
+                r.name = o.getString("n");
+                r.deviceId = o.getString("d");
+                r.usedBytes = o.getLong("b");
+                r.usedMins = o.optInt("m", 0);
+                r.usedSms = o.optInt("s", 0);
+                r.updatedAtMs = o.optLong("u", 0);
+                out.add(r);
+            }
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ---------- Admin / Member tab ----------
+
+    private void showRole() {
+        content.removeAllViews();
+        LinearLayout c = card();
+        c.addView(text(L(store.owner ? "tab_admin" : "tab_member"), 17, VIOLET, true));
+        c.addView(spaced(text(store.operator + L("pkg_suffix"), 14, TEXT, false), 8));
+        c.addView(text(L("join_code_label") + store.joinCode, 15, TEXT, true));
+        c.addView(text(F("pkg_line", store.totalGb, store.members, store.fairShareGb()), 13, MUTED, false));
+        content.addView(c);
+
+        if (store.owner) {
+            Button btnCycle = button(L("new_cycle"), true);
+            btnCycle.setOnClickListener(x -> new AlertDialog.Builder(this)
+                    .setTitle(L("confirm_cycle_title"))
+                    .setMessage(L("confirm_cycle_msg"))
+                    .setPositiveButton(L("yes_go"), (d, w) -> {
+                        store.cycleStartMs = startOfToday();
+                        store.save();
+                        MfsSync.updateCycleStart(store, new MfsSync.Cb<Boolean>() {
+                            @Override public void ok(Boolean v) { toast(L("new_cycle_done")); showTab(0); }
+                            @Override public void fail(String msg) { toast(L("err_net")); }
+                        });
+                    })
+                    .setNegativeButton(L("cancel"), null)
+                    .show());
+            content.addView(btnCycle);
+
+            Button btnDel = button(L("delete_group"), false);
+            btnDel.setTextColor(OVER);
+            btnDel.setOnClickListener(x -> new AlertDialog.Builder(this)
+                    .setTitle(L("confirm_delete_title"))
+                    .setMessage(L("confirm_delete_msg"))
+                    .setPositiveButton(L("yes_go"), (d, w) -> MfsSync.deleteGroup(store.joinCode,
+                            new MfsSync.Cb<Boolean>() {
+                                @Override public void ok(Boolean v) { store.clearAll(); lastMembers = null; showSetup(); }
+                                @Override public void fail(String msg) { toast(L("err_net")); }
+                            }))
+                    .setNegativeButton(L("cancel"), null)
+                    .show());
+            content.addView(btnDel);
+        } else {
+            content.addView(spaced(text(L("member_info"), 13, MUTED, false), 12));
+            Button btnLeave = button(L("leave_group"), false);
+            btnLeave.setTextColor(OVER);
+            btnLeave.setOnClickListener(x -> new AlertDialog.Builder(this)
+                    .setTitle(L("confirm_leave_title"))
+                    .setMessage(L("confirm_leave_msg"))
+                    .setPositiveButton(L("yes_go"), (d, w) -> MfsSync.deleteMyMember(store,
+                            new MfsSync.Cb<Boolean>() {
+                                @Override public void ok(Boolean v) { store.clearAll(); lastMembers = null; showSetup(); }
+                                @Override public void fail(String msg) { toast(L("err_net")); }
+                            }))
+                    .setNegativeButton(L("cancel"), null)
+                    .show());
+            content.addView(btnLeave);
+        }
+    }
+
+    // ================= SETTINGS =================
+
+    private void showSettings() {
+        inSettings = true;
+        renderGen++;
+        tabBar.setVisibility(View.GONE);
+        content.removeAllViews();
+        Button back = button(L("back"), false);
+        back.setOnClickListener(x -> {
+            if (store.setupDone) showTab(tab); else showSetup();
+        });
+        content.addView(back);
+        LinearLayout c = card();
+        c.addView(text(L("settings_title"), 17, VIOLET, true));
+        c.addView(spaced(text(L("language"), 14, MUTED, false), 10));
+        Button bEn = button("English", "en".equals(store.lang));
+        bEn.setOnClickListener(x -> setLang("en"));
+        c.addView(bEn);
+        Button bUr = button("اردو", !"en".equals(store.lang));
+        bUr.setOnClickListener(x -> setLang("ur"));
+        c.addView(bUr);
+        content.addView(c);
+    }
+
+    private void setLang(String lang) {
+        store.lang = lang;
+        store.save();
+        MfsLang.lang = lang;
+        showSettings();
+    }
+
+    // ================= REPORT =================
+
+    private String reportText(long dataBytes, int mins, int sms) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(L("r_title")).append("\n");
+        sb.append(F("r_pkg", store.operator, store.totalGb, store.members)).append("\n");
+        sb.append(F("r_share", store.fairShareGb())).append("\n");
+        if (dataBytes >= 0) {
+            double gb = UsageReader.toGb(dataBytes);
+            double pct = store.fairShareGb() > 0 ? gb / store.fairShareGb() : 0;
+            sb.append(F("r_used", UsageReader.humanGb(dataBytes), pct * 100));
+            if (pct >= 1) sb.append(L("r_over"));
+            sb.append("\n");
+        } else {
+            sb.append(L("r_nodata")).append("\n");
+        }
+        if (store.totalMins > 0 && mins >= 0) {
+            sb.append(F("r_mins", mins, store.fairShareMins())).append("\n");
+        }
+        if (store.totalSms > 0 && sms >= 0) {
+            sb.append(F("r_sms", sms, store.fairShareSms())).append("\n");
+        }
+        int left = store.daysLeft();
+        sb.append(left > 0 ? F("r_days", left) : L("r_ended")).append("\n");
+        sb.append(L("r_from"));
+        return sb.toString();
     }
 }

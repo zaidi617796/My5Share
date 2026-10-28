@@ -17,10 +17,16 @@ public class MfsStore {
     public String myName = "";
     public String operator = "Jazz";
     public double totalGb = 100;
+    public int totalMins = 0;
+    public int totalSms = 0;
     public int members = 5;
     public long cycleStartMs;
     public int validityDays = 30;
     public String joinCode = "";
+    public String deviceId = "";
+    public String lang = "ur";
+    public String membersCacheJson = "";
+    public long membersCacheAt;
 
     private final SharedPreferences sp;
 
@@ -31,10 +37,20 @@ public class MfsStore {
         myName = sp.getString("my_name", "");
         operator = sp.getString("operator", "Jazz");
         totalGb = sp.getFloat("total_gb", 100f);
+        totalMins = sp.getInt("total_mins", 0);
+        totalSms = sp.getInt("total_sms", 0);
         members = sp.getInt("members", 5);
         cycleStartMs = sp.getLong("cycle_start", System.currentTimeMillis());
         validityDays = sp.getInt("validity_days", 30);
         joinCode = sp.getString("join_code", "");
+        lang = sp.getString("lang", "ur");
+        membersCacheJson = sp.getString("members_cache", "");
+        membersCacheAt = sp.getLong("members_cache_at", 0);
+        deviceId = sp.getString("device_id", "");
+        if (deviceId.isEmpty()) {
+            deviceId = java.util.UUID.randomUUID().toString();
+            sp.edit().putString("device_id", deviceId).apply();
+        }
     }
 
     public void save() {
@@ -44,22 +60,43 @@ public class MfsStore {
                 .putString("my_name", myName)
                 .putString("operator", operator)
                 .putFloat("total_gb", (float) totalGb)
+                .putInt("total_mins", totalMins)
+                .putInt("total_sms", totalSms)
                 .putInt("members", members)
                 .putLong("cycle_start", cycleStartMs)
                 .putInt("validity_days", validityDays)
                 .putString("join_code", joinCode)
+                .putString("lang", lang)
+                .putString("members_cache", membersCacheJson)
+                .putLong("members_cache_at", membersCacheAt)
                 .apply();
     }
 
     public void clearAll() {
+        String keepLang = lang;
+        String keepDevice = deviceId;
         sp.edit().clear().apply();
         setupDone = false;
         joinCode = "";
+        membersCacheJson = "";
+        lang = keepLang;
+        deviceId = keepDevice;
+        sp.edit().putString("lang", keepLang).putString("device_id", keepDevice).apply();
     }
 
     /** Mera barabar hissa (GB) */
     public double fairShareGb() {
         return members > 0 ? totalGb / members : totalGb;
+    }
+
+    /** Mera barabar hissa (minutes) */
+    public double fairShareMins() {
+        return members > 0 ? (double) totalMins / members : totalMins;
+    }
+
+    /** Mera barabar hissa (SMS) */
+    public double fairShareSms() {
+        return members > 0 ? (double) totalSms / members : totalSms;
     }
 
     public long cycleEndMs() {
