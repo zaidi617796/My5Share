@@ -1,21 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Koi permission nahi chahiye: dialer/sms/settings sab intent se khulte hain -->
+    <!-- MyFiveShare: asal data usage parhne ke liye Usage Access (special permission, Settings se milti hai) -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Phone Settings Guide ka koi permission nahi chahiye tha: dialer/sms/settings sab intent se khulte hain -->
 
     <application
         android:allowBackup="true"
-        android:label="@string/app_name"
+        android:label="MyFiveShare"
         android:theme="@style/Theme.SettingsGuide">
 
+        <!-- Samne MyFiveShare khulega (Zahid, 2026-10-28) -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.myfiveshare.app.MfsActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Phone Settings Guide: code maujood hai lekin filhal samne nahi (launcher nahi) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true" />
 
         <activity
             android:name=".OperatorDetailActivity"
